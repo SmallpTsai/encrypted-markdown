@@ -1,0 +1,24 @@
+<div id="waitingModal" class="modal fade" role="dialog">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-body" style="text-align:center">
+        Please wait...
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="text/javascript">
+function uiEnterWaiting()
+{
+  $('#waitingModal').modal({
+      backdrop: 'static',
+      keyboard: false
+  })
+}
+
+function uiLeaveWaiting()
+{
+  $('#waitingModal').modal("hide");    
+}
+</script>

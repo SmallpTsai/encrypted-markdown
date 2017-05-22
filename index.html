@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Encrypted Markdown</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- bootstrap & jQuery -->
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+
+  <!-- Left Panel: CodeMirror-->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.25.2/codemirror.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.25.2/addon/mode/overlay.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.25.2/mode/xml/xml.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.25.2/mode/markdown/markdown.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.25.2/mode/gfm/gfm.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.25.2/mode/javascript/javascript.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.25.2/mode/css/css.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.25.2/mode/htmlmixed/htmlmixed.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.25.2/addon/edit/continuelist.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.25.2/codemirror.css">
+  <link rel="stylesheet" href="github.css">
+
+  <!-- Right Panel: markdown-it + highlight -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/markdown-it/8.3.1/markdown-it.min.js"></script>
+  <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.11.0/styles/default.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.11.0/highlight.min.js"></script>
+
+  <!-- encryption library -->
+  <script src='https://bitwiseshiftleft.github.io/sjcl/sjcl.js'></script>
+
+  <script src="sjclHelper.js"></script>
+  <script src="gapiHelper.js"></script>
+  <script src="ui_listPage.js"></script>
+  <script src="ui_editorPage.js"></script>
+
+<style>
+html {
+  height: 100%;
+}
+
+body {
+  height: 100%;
+  padding-top: 51px;
+}
+
+#editor-page {
+  height: 100%;
+  margin-left: 0;
+  margin-right: 0;
+  padding: 0;
+}
+
+.editor-panel{
+  background-color: white;
+  height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.col-sm-3 {
+
+}
+.md-entry {
+  padding: 5px 25px;
+  margin: 10px 0px;
+  min-height: 100px;
+  background: #F0F0F0;
+  border-radius: 10px;
+  display: flex;
+  justify-content: center; /* align horizontal */
+  align-items: center; /* align vertical */
+}
+
+.md-new {
+  background: white;
+  border-color: lightgrey;
+  border-width: 1px;
+  border-style: solid;
+}
+
+</style>
+</head>
+<body>
+<nav class="navbar navbar-default navbar-fixed-top">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle" data-toggle="collapse" data-target="#myNavbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>                        
+      </button>
+      <div id="md-back" class="navbar-brand" style="display:none">
+        <a class="allnotes-btn" href="#"><span class="glyphicon glyphicon-chevron-left"></span></a>
+      </div>
+      <div id="md-brand" class="navbar-brand">Encrypted Markdown</div>
+      <div id="md-title" class="navbar-brand"></div>
+      <div id="md-status" class="navbar-text"></div>
+    </div>
+    <div class="collapse navbar-collapse" id="myNavbar">
+      <ul class="nav navbar-nav navbar-right" id="menubar">
+        <li><a class="signout-btn" href="#">Sign Out</a></li>
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<div id="authorize-page" class="container-fluid" style="display:none">
+  <h2>Authorize page</h2>
+  <p>Please click "Authroize" button to continue</p>
+  <button class="btn btn-default btn-lg authorize-btn">Authorize</button>
+</div>
+
+<div id="list-page" class="container-fluid" style="display:none">
+  <ul id="md-list" style="list-style: none">
+  </ul>
+</div>
+
+<div id="editor-page" class="container-fluid" style="display:none">
+  <div class="col-sm-6 md_in">
+    <form><textarea id="code">
+    </textarea></form>
+  </div>
+  <div id="md-out" class="col-sm-6 md_out">
+    <div id="out" class="container-fluid"></div>
+  </div>
+</div>
+
+<div id="ph_waitingDialog"></div>
+
+<div id="ph_passwordDialog"></div>
+
+<!-- Modal -->
+<div class="modal fade" id="msgModal" role="dialog">
+  <div class="modal-dialog">
+  
+    <!-- Modal content-->
+    <div class="modal-content">
+      <div class="modal-header">
+        <button type="button" class="close" data-dismiss="modal">&times;</button>
+      </div>
+      <div class="modal-body" id="msgModalBody">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-default" data-dismiss="modal">Ok</button>
+      </div>
+    </div>
+    
+  </div>
+</div>
+
+
+
+<script type="text/javascript">
+
+const CLIENT_ID = '637674426580-veqj0cg79ge2f4i3m0al8cri7m4u0ipm.apps.googleusercontent.com';
+const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"];
+// Authorization scopes required by the API; multiple scopes can be
+// included, separated by spaces.
+const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+
+
+var uiPages = {};
+var currPage = undefined;
+
+var atPage;
+var autosaveTimer;
+var _dirty = false;
+var _saving = false;
+
+var fileId;
+
+var md;
+var editor;
+
+function handleClientLoad() {
+
+  $("#ph_waitingDialog").load("ui_waitingDialog.html");
+
+  uiListPage.init("list-page", "md-list", switchToEditor);
+  uiEditorPage.init("editor-page");
+
+  uiPages["list"] = uiListPage;
+  uiPages["editor"] = uiEditorPage;
+
+  for (var page in uiPages) {
+    if (uiPages.hasOwnProperty(page)) {
+      uiPages[page].pageInit();
+    }
+  }  
+
+  // hide everything
+  $("#authorize-page").css("display", "none");
+  $("#menubar").css("display", "none");
+  $("#md-back").css("display", "none");
+
+  // initialze handler
+  $(".authorize-btn").click(function() {
+    gapi.auth2.getAuthInstance().signIn();
+  });
+  $(".signout-btn").click(function() {
+    gapi.auth2.getAuthInstance().signOut();
+    return false;
+  });
+  $(".newnote-btn").click(switchToEditor);
+  $(".allnotes-btn").click(function() {
+    switchToList();
+    return false;
+  });
+
+  // do google api login
+  gapi.load('client:auth2', function () {
+    gapi.client.init({
+      discoveryDocs: DISCOVERY_DOCS,
+      clientId: CLIENT_ID,
+      scope: SCOPES
+    }).then(function () {
+      // Listen for sign-in state changes.
+      gapi.auth2.getAuthInstance().isSignedIn.listen(updateSigninStatus);
+
+      // Handle the initial sign-in state.
+      updateSigninStatus(gapi.auth2.getAuthInstance().isSignedIn.get());
+    });    
+  });
+}
+
+function updateSigninStatus(isSignedIn) {
+  if (isSignedIn) {
+    $("#authorize-page").css("display", "none");
+    $("#menubar").css("display", "block");
+
+
+    $("#ph_passwordDialog").load("ui_passwordDialog.html", function() {
+      showPasswordDialog().then(pwd => {
+        sjclHelper.init(pwd);
+        switchToList();      
+      });      
+    });
+
+    //listFiles();
+    //readFileContent('0BwYvklzIWyi7TU93eERXdlZiOHM'); // test.md
+  } else {
+    $("#list-page").css("display", "none");
+    $("#editor-page").css("display", "none");
+    $("#menubar").css("display", "none");
+
+    $("#authorize-page").css("display", "block");
+    
+  }
+}
+
+function switchToList() {
+
+  if(currPage in uiPages)
+    uiPages[currPage].pageLeave();
+
+  var mdItems = [];
+
+  uiEnterWaiting();
+  gapiGetFolderId().then(id => {
+    return gapiHelper.listFolder(id);
+  }).then(files => {
+    for (var i = 0; i < files.length; i++) {
+      var file = files[i];
+      mdItems.push({id: file.id, name: file.appProperties.title});
+    }
+
+    currPage = "list";
+    uiPages[currPage].pageEnter(mdItems);
+    uiLeaveWaiting();
+
+  }).catch(error => {
+    console.log(error);
+    uiLeaveWaiting();
+  })
+}
+
+function switchToEditor(itemId) {
+
+  if(currPage in uiPages)
+    uiPages[currPage].pageLeave();
+
+  if(itemId)
+  {
+    // load markdown content
+    uiEnterWaiting();
+
+    gapiHelper.readFile(itemId)
+      .then(content => {
+        var decrypted = sjclHelper.decrypt(content);
+        uiLeaveWaiting();
+        currPage = "editor";
+        uiPages[currPage].pageEnter(decrypted);    
+
+      }).catch(error => {
+        console.log(JSON.stringify(error));
+        uiLeaveWaiting();
+        showMsgDialog("Error: " + JSON.stringify(error), switchToList);
+      });
+  }
+  else
+  {
+    // new markdown
+    currPage = "editor";
+    uiPages[currPage].pageEnter();    
+  }
+}
+
+/*
+function enterEditorPage()
+{
+  fileId = undefined;
+  _saving = false;
+  _dirty = false;
+  clearTimeout(autosaveTimer);
+
+  $("#editor-page").css("display", "block");
+  $("#md-back").css("display", "block");
+  $("#md-title").text("");
+  $("#md-status").text("");
+  $("#md-title").css("display", "block");
+  $("#md-status").css("display", "block");
+
+  atPage = "editor"
+}
+
+function leaveEditorPage()
+{
+  fileId = undefined;
+  editor.setValue("");
+  _saving = false;
+  _dirty = false;
+  clearTimeout(autosaveTimer);
+
+  $("#editor-page").css("display", "none");
+  $("#md-back").css("display", "none");
+  $("#md-title").css("display", "none");
+  $("#md-status").css("display", "none");
+}
+
+function outputUpdate(val){
+
+  if(!_dirty)
+  {
+    _dirty = true;
+    updateStatusText();
+  }
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(doSave, 5000);
+
+  var out = document.getElementById('out');
+  out.innerHTML = md.render(val);
+
+  // try to grab H1 for title
+  var title = getMDTitle();
+  $("#md-title").text(title ? title : "");
+
+}
+*/
+
+function doSave()
+{
+  // skip save process if no title
+  var title = getMDTitle()
+  if(!title)
+    return;
+
+  uiEnterWaiting();
+  _saving = true;
+  updateStatusText();
+
+  gapiGetFolderId().then(folderId => {
+    var encrypted = sjclHelper.encrypt(editor.getValue());
+    if(fileId) 
+      return gapiHelper.updateFile(fileId, title, "test/markdown", encrypted);
+    else
+      return gapiHelper.createFile("encrypted_markdown_data", title, "test/markdown", encrypted, folderId);
+  }).then(id => {
+    fileId = id;
+    _dirty = false;
+    _saving = false;
+    updateStatusText();
+    uiLeaveWaiting();
+  }).catch(error => {
+    console.log(error);
+    uiLeaveWaiting();
+  });
+}
+/*
+function getMDTitle()
+{
+  var h1 = out.getElementsByTagName("H1");
+  if(h1.length > 0)
+  {
+    return h1[0].innerText;
+  }
+  return null;
+}
+*/
+function showMsgDialog(msg, callback)
+{
+  $('#msgModalBody').text(msg);
+  $("#msgModal").on('hidden.bs.modal', function(e) {
+    $(this).off(e);
+    callback();
+  });
+  $('#msgModal').modal("show");
+}
+
+function updateStatusText()
+{
+  if(_dirty && !_saving)
+    $("#md-status").text("(modified)");
+  else if(_dirty && _saving)
+    $("#md-status").text("(saving...)");
+  else
+    $("#md-status").text("");    
+}
+
+function gapiGetFolderId() {
+  const folderName = "EncryptedMarkdown";
+
+  return new Promise(function(resolve, reject) {
+
+    if ( typeof gapiGetFolderId.id != 'undefined' ) {
+      resolve(gapiGetFolderId.id);
+      return;
+    }
+
+    gapiHelper.getFolderIdByName(folderName)
+      .then(id => {
+        if(id != "")
+        {
+          gapiGetFolderId.id = id;
+          resolve(id);
+        }
+        else
+        {
+          return gapiHelper.createRootFolder(folderName);
+        }
+      }).then(id => {
+        gapiGetFolderId.id = id;
+        resolve(id);        
+      })
+  });
+}
+
+</script>
+<script async defer src="https://apis.google.com/js/api.js"
+  onload="this.onload=function(){};handleClientLoad()"
+  onreadystatechange="if (this.readyState === 'complete') this.onload()">
+</script>
+
+</body>
+</html>
