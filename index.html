@@ -82,6 +82,12 @@ body {
   border-style: solid;
 }
 
+@media only screen and (orientation: portrait) {
+    .md-new, .editor-panel-left{
+        display: none;
+    }
+}
+
 </style>
 </head>
 <body>
@@ -115,18 +121,9 @@ body {
 </div>
 
 <div id="list-page" class="container-fluid" style="display:none">
-  <ul id="md-list" style="list-style: none">
-  </ul>
 </div>
 
 <div id="editor-page" class="container-fluid" style="display:none">
-  <div class="col-sm-6 md_in">
-    <form><textarea id="code">
-    </textarea></form>
-  </div>
-  <div id="md-out" class="col-sm-6 md_out">
-    <div id="out" class="container-fluid"></div>
-  </div>
 </div>
 
 <div id="ph_waitingDialog"></div>
@@ -166,11 +163,9 @@ const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 var uiPages = {};
 var currPage = undefined;
 
-var atPage;
 var autosaveTimer;
 var _dirty = false;
 var _saving = false;
-
 var fileId;
 
 var md;
@@ -180,7 +175,7 @@ function handleClientLoad() {
 
   $("#ph_waitingDialog").load("ui_waitingDialog.html");
 
-  uiListPage.init("list-page", "md-list", switchToEditor);
+  uiListPage.init("list-page", switchToEditor);
   uiEditorPage.init("editor-page");
 
   uiPages["list"] = uiListPage;
@@ -190,7 +185,25 @@ function handleClientLoad() {
     if (uiPages.hasOwnProperty(page)) {
       uiPages[page].pageInit();
     }
-  }  
+  } 
+
+  uiEditorPage.on("change", function() {
+    if(!_dirty)
+    {
+      _dirty = true;
+      updateStatus();
+    }
+    clearTimeout(autosaveTimer);
+    autosaveTimer = setTimeout(doSave, 5000);
+
+    $("#md-title").text(uiEditorPage.getTitleText());
+  });
+
+  uiEditorPage.on("leave", function() {
+    clearTimeout(autosaveTimer);
+    _dirty = false;
+    updateStatus();
+  });
 
   // hide everything
   $("#authorize-page").css("display", "none");
@@ -232,23 +245,15 @@ function updateSigninStatus(isSignedIn) {
     $("#authorize-page").css("display", "none");
     $("#menubar").css("display", "block");
 
-
     $("#ph_passwordDialog").load("ui_passwordDialog.html", function() {
       showPasswordDialog().then(pwd => {
         sjclHelper.init(pwd);
         switchToList();      
       });      
     });
-
-    //listFiles();
-    //readFileContent('0BwYvklzIWyi7TU93eERXdlZiOHM'); // test.md
   } else {
-    $("#list-page").css("display", "none");
-    $("#editor-page").css("display", "none");
     $("#menubar").css("display", "none");
-
     $("#authorize-page").css("display", "block");
-    
   }
 }
 
@@ -283,6 +288,10 @@ function switchToEditor(itemId) {
   if(currPage in uiPages)
     uiPages[currPage].pageLeave();
 
+  fileId = itemId;
+  _dirty = false;
+  clearTimeout(autosaveTimer);
+
   if(itemId)
   {
     // load markdown content
@@ -293,7 +302,8 @@ function switchToEditor(itemId) {
         var decrypted = sjclHelper.decrypt(content);
         uiLeaveWaiting();
         currPage = "editor";
-        uiPages[currPage].pageEnter(decrypted);    
+        uiPages[currPage].pageEnter(decrypted);
+        updateStatus();
 
       }).catch(error => {
         console.log(JSON.stringify(error));
@@ -309,71 +319,19 @@ function switchToEditor(itemId) {
   }
 }
 
-/*
-function enterEditorPage()
-{
-  fileId = undefined;
-  _saving = false;
-  _dirty = false;
-  clearTimeout(autosaveTimer);
-
-  $("#editor-page").css("display", "block");
-  $("#md-back").css("display", "block");
-  $("#md-title").text("");
-  $("#md-status").text("");
-  $("#md-title").css("display", "block");
-  $("#md-status").css("display", "block");
-
-  atPage = "editor"
-}
-
-function leaveEditorPage()
-{
-  fileId = undefined;
-  editor.setValue("");
-  _saving = false;
-  _dirty = false;
-  clearTimeout(autosaveTimer);
-
-  $("#editor-page").css("display", "none");
-  $("#md-back").css("display", "none");
-  $("#md-title").css("display", "none");
-  $("#md-status").css("display", "none");
-}
-
-function outputUpdate(val){
-
-  if(!_dirty)
-  {
-    _dirty = true;
-    updateStatusText();
-  }
-  clearTimeout(autosaveTimer);
-  autosaveTimer = setTimeout(doSave, 5000);
-
-  var out = document.getElementById('out');
-  out.innerHTML = md.render(val);
-
-  // try to grab H1 for title
-  var title = getMDTitle();
-  $("#md-title").text(title ? title : "");
-
-}
-*/
-
 function doSave()
 {
   // skip save process if no title
-  var title = getMDTitle()
+  var title = uiEditorPage.getTitleText();
   if(!title)
     return;
 
   uiEnterWaiting();
   _saving = true;
-  updateStatusText();
+  updateStatus();
 
   gapiGetFolderId().then(folderId => {
-    var encrypted = sjclHelper.encrypt(editor.getValue());
+    var encrypted = sjclHelper.encrypt(uiEditorPage.getContent());
     if(fileId) 
       return gapiHelper.updateFile(fileId, title, "test/markdown", encrypted);
     else
@@ -382,24 +340,14 @@ function doSave()
     fileId = id;
     _dirty = false;
     _saving = false;
-    updateStatusText();
+    updateStatus();
     uiLeaveWaiting();
   }).catch(error => {
     console.log(error);
     uiLeaveWaiting();
   });
 }
-/*
-function getMDTitle()
-{
-  var h1 = out.getElementsByTagName("H1");
-  if(h1.length > 0)
-  {
-    return h1[0].innerText;
-  }
-  return null;
-}
-*/
+
 function showMsgDialog(msg, callback)
 {
   $('#msgModalBody').text(msg);
@@ -410,14 +358,30 @@ function showMsgDialog(msg, callback)
   $('#msgModal').modal("show");
 }
 
-function updateStatusText()
+function updateStatus()
 {
-  if(_dirty && !_saving)
-    $("#md-status").text("(modified)");
-  else if(_dirty && _saving)
-    $("#md-status").text("(saving...)");
-  else
-    $("#md-status").text("");    
+  if(currPage == "list"){
+    $("#md-brand").css("display", "block");
+    $("#md-back").css("display", "none");
+    $("#md-title").css("display", "none");
+    $("#md-status").css("display", "none");
+
+  }
+  else if(currPage == "editor") {
+    $("#md-brand").css("display", "none");
+    $("#md-back").css("display", "block");
+    $("#md-title").css("display", "block");
+    $("#md-status").css("display", "block");
+
+    if(_dirty && !_saving)
+      $("#md-status").text("(modified)");
+    else if(_dirty && _saving)
+      $("#md-status").text("(saving...)");
+    else
+      $("#md-status").text("");    
+
+    $("#md-title").text(uiEditorPage.getTitleText());
+  }
 }
 
 function gapiGetFolderId() {

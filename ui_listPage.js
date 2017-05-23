@@ -2,11 +2,10 @@
 
 var uiListPage = {
 
-  init: function(divId, ulId, itemClickFunc) {
+  init: function(divId, itemClickFunc) {
     this._div = "#"+divId;
-    this._list = "#"+ulId;
+    this._list = "#"+divId+"-ul";
     this._click = function (e) {
-      console.log($(e.target).data("act"));
       itemClickFunc($(e.target).data("act"));
       return false;
     }
@@ -14,6 +13,10 @@ var uiListPage = {
 
   pageInit: function () {
     $(this._div).css("display", "none");
+
+    $(this._div).html("");
+    $(this._div).append(
+      $('<ul>').attr('style', 'list-style: none; padding: 0;').attr('id', this._list.slice(1)));
   },
 
   pageEnter: function (mdItems) {

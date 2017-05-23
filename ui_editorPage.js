@@ -2,9 +2,10 @@
 
 var uiEditorPage = {
 
-  init: function(divId, onSaveCallback) {
+  init: function(divId) {
     this._div = divId;
-    this._onsave = onSaveCallback;
+    this._noSync = false;
+    this._eventHandler = {};
   },
 
   pageInit: function () {
@@ -14,17 +15,18 @@ var uiEditorPage = {
     var code = this._div + "-code";
     var right = this._div + "-right";
     var out = this._div + "-out";
+    var eventHandler = this._eventHandler;
 
     $("#"+div).css("display", "none");
 
     $("#"+div).html("");
     $("#"+div).append(
-      $('<div>').attr('class', 'col-sm-6 editor-panel').attr('id', left).append(
+      $('<div>').attr('class', 'col-sm-6 editor-panel editor-panel-left').attr('id', left).append(
         $('<form>').append(
           $('<textarea>').attr('id', code))));
 
     $("#"+div).append(
-      $('<div>').attr('class', 'col-sm-6 editor-panel').attr('id', right).append(
+      $('<div>').attr('class', 'col-sm-6 editor-panel editor-panel-right').attr('id', right).append(
         $('<div>').attr('class', 'container-fluid').attr('id', out)));
 
     // initialize "md to html" 
@@ -40,6 +42,7 @@ var uiEditorPage = {
         return ''; // use external default escaping
       }
     });
+    this._md = md;
 
     const oldRenderer = md.renderer.renderToken.bind(md.renderer)
     md.renderer.renderToken = function (tokens, idx, options) {
@@ -50,7 +53,6 @@ var uiEditorPage = {
       }
       return oldRenderer(tokens, idx, options);
     };
-    this._md = md;
 
 
     // initialize codemirror editor
@@ -60,21 +62,24 @@ var uiEditorPage = {
       matchBrackets: true,
       lineWrapping: true,
       theme: 'github',
+      cursorScrollMargin: 20,
       extraKeys: {"Enter": "newlineAndIndentContinueMarkdownList"}
     });
+    this._editor = editor;
 
     editor.on('change', function (inst) {
-      /*
-      this._dirty = true;
-      clearTimeout(this._timer);
-      this._timer = setTimeout(function () {
-        this._onsave(inst.getValue());
-      }, 5000);
-      */
       $('#'+out).html(md.render(inst.getValue()));
+
+      if("change" in eventHandler && !uiEditorPage._noChangeEvent)
+        eventHandler["change"]();
+      uiEditorPage._noChangeEvent = false;
     });
 
     editor.on('scroll', function (inst) {
+      if(uiEditorPage._noSync) {
+        uiEditorPage._noSync = false;
+        return;        
+      }
       // try to scroll html side as well
       var currLine = inst.lineAtHeight(inst.getScrollInfo().top, "local");
       var elemLine;
@@ -84,24 +89,49 @@ var uiEditorPage = {
         elemLine = $(this).attr("data-startline");
         //console.log("comp:"+currLine+"vs"+elemLine+"="+(elemLine>currLine));
         if(elemLine > currLine) {
-          var fin = $("#"+right).get(0);
+          var top = $("#"+right).get(0);
           var obj = $(this).get(0);
           var offsetTop = 0;
           do {
             offsetTop += obj.offsetTop;
             obj = obj.offsetParent;
-          } while(obj != fin)
+          } while(obj != top)
 
+          uiEditorPage._noSync = true;
           $("#"+right).scrollTop(offsetTop);
           return false;
         }
-      })
+      });
     });
 
-    this._editor = editor;
-
     $("#"+right).scroll(function(e) {
+      if(uiEditorPage._noSync) {
+        uiEditorPage._noSync = false;
+        return;        
+      }
       console.log("scroll:" + e.currentTarget.scrollTop);
+
+      var scrollTop = $("#"+right).scrollTop();
+      var top = $("#"+right).get(0);
+      var lastLine = 0;
+      $("#"+out + " *").each(function (){
+
+        var obj = $(this).get(0);
+        var offsetTop = 0;
+        do {
+          offsetTop += obj.offsetTop;
+          obj = obj.offsetParent;
+        } while(obj != top)
+
+        if(offsetTop > scrollTop) {
+          var t = editor.charCoords({line: lastLine, ch: 0}, "local").top; 
+          uiEditorPage._noSync = true;
+          editor.scrollTo(null, t);
+          return false; 
+        }
+        if($(this).attr("data-startline"))
+          lastLine = $(this).attr("data-startline")-1;
+      });
     });
 
     $(window).on('resize', function(e) {
@@ -115,12 +145,17 @@ var uiEditorPage = {
 
     this._editor.setSize(null, $('#'+this._div+"-left").height()+"px");
     if(mdData)
-      this._editor.setValue(mdData);
+    {
+      this._noChangeEvent = true;
+      this._editor.setValue(mdData);      
+    }
   },
 
   pageLeave: function () {
     this._editor.setValue("");
     $("#"+this._div).css("display", "none");
+    if("leave" in this._eventHandler)
+      this._eventHandler["leave"]();
   },
 
   getTitleText: function () {
@@ -133,5 +168,12 @@ var uiEditorPage = {
     return null;
   },
 
+  getContent: function() {
+    return this._editor.getValue();
+  },
+
+  on: function(event, callback) {
+    this._eventHandler[event] = callback;
+  },
 
 };
